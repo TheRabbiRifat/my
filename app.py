@@ -7,7 +7,7 @@ from pyppeteer import launch
 app = Flask(__name__)
 
 # Configure session to use filesystem (instead of signed cookies)
-app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_TYPE'] = 'redis'
 app.config['SECRET_KEY'] = 'your_secret_key_here'
 app.config['PERMANENT_SESSION_LIFETIME'] = 300  # 5 minutes
 Session(app)
