@@ -5,6 +5,8 @@ from flask_session import Session
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 from io import BytesIO
 from PIL import Image
@@ -63,8 +65,8 @@ def initiate_session():
         driver = initialize_driver()
         driver.get(url)
         
-        time.sleep(2)  # Wait for page to fully load
-        
+        # Wait until CAPTCHA image is present
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'CaptchaImage')))
         captcha_element = driver.find_element(By.ID, 'CaptchaImage')
         captcha_base64 = take_screenshot_of_captcha(driver, captcha_element)
         
