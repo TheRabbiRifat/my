@@ -1,5 +1,4 @@
-Flask
-Flask-Session
-selenium
-Pillow
-requests
+Flask==2.2.5
+Flask-Session==0.4.0
+requests==2.31.0
+beautifulsoup4==4.12.2
