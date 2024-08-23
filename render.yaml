@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: captcha-tls-app
+    env: docker
+    plan: free
+    autoDeploy: true
+    region: us
+    timeoutSeconds: 300
+    envVars:
+      - key: PYTHONHTTPSVERIFY
+        value: "0"
