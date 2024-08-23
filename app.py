@@ -3,6 +3,8 @@ import requests
 from flask import Flask, request, jsonify, session
 from flask_session import Session
 from bs4 import BeautifulSoup
+from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -31,11 +33,14 @@ def initiate_session():
         captcha_img_src = captcha_img_tag['src']
         captcha_image_url = url + captcha_img_src
 
-        captcha_image = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
-        captcha_image.raise_for_status()
+        captcha_image_response = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
+        captcha_image_response.raise_for_status()
 
-        content_type = captcha_image.headers['Content-Type']
-        captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(captcha_image.content).decode('utf-8')
+        # Convert image to base64
+        image = Image.open(BytesIO(captcha_image_response.content))
+        buffered = BytesIO()
+        image.save(buffered, format="PNG")  # or "JPEG" based on the actual format
+        captcha_image_base64 = "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode('utf-8')
         
         return jsonify({
             'status': 'captcha_required',
