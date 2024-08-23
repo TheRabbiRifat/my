@@ -1,70 +1,16 @@
-import asyncio
 import base64
+import requests
 from flask import Flask, request, jsonify, session
 from flask_session import Session
-from pyppeteer import launch
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
 # Configure session to use filesystem (instead of signed cookies)
-app.config['SESSION_TYPE'] = 'redis'
+app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SECRET_KEY'] = 'your_secret_key_here'
 app.config['PERMANENT_SESSION_LIFETIME'] = 300  # 5 minutes
 Session(app)
-
-async def initiate_and_get_captcha(url):
-    browser = await launch(
-        headless=True,
-        args=['--ignore-certificate-errors']  # Disable SSL verification
-    )
-    page = await browser.newPage()
-    
-    # Go to the page
-    await page.goto(url)
-    
-    # Wait for captcha image to load
-    await page.waitForSelector('#CaptchaImage')
-    
-    # Take a screenshot of the captcha image
-    captcha_element = await page.querySelector('#CaptchaImage')
-    captcha_screenshot = await captcha_element.screenshot()
-    
-    # Get the form action URL
-    form_action = await page.evaluate('''() => {
-        return document.querySelector('form').action;
-    }''')
-
-    # Encode the screenshot to base64
-    screenshot_base64 = base64.b64encode(captcha_screenshot).decode('utf-8')
-    
-    # Store browser and page in session for later use
-    session['browser'] = browser
-    session['page'] = page
-    session['form_action'] = form_action
-    
-    return screenshot_base64
-
-async def fill_form_and_submit(captcha, birth_date, serial_number):
-    page = session['page']
-    
-    # Type into the form fields
-    await page.type('input[name="CaptchaInputText"]', captcha)
-    await page.type('input[name="BirthDate"]', birth_date)
-    await page.type('input[name="UBRN"]', serial_number)
-    
-    # Click the submit button
-    await page.click('input[type="submit"]')
-    
-    # Wait for navigation after the form is submitted
-    await page.waitForNavigation()
-    
-    # Get the resulting page content
-    content = await page.content()
-    
-    # Close the browser after the operation
-    await session['browser'].close()
-    
-    return content
 
 @app.route('/initiate', methods=['POST'])
 def initiate_session():
@@ -72,15 +18,32 @@ def initiate_session():
     
     try:
         session.clear()
-        screenshot_base64 = asyncio.get_event_loop().run_until_complete(initiate_and_get_captcha(url))
+        session['requests_session'] = requests.Session()
+        session['requests_session'].headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
+        })
+        
+        response = session['requests_session'].get(url, verify=False, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        captcha_img_tag = soup.find('img', {'id': 'CaptchaImage'})
+        captcha_img_src = captcha_img_tag['src']
+        captcha_image_url = url + captcha_img_src
+
+        captcha_image = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
+        captcha_image.raise_for_status()
+
+        content_type = captcha_image.headers['Content-Type']
+        captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(captcha_image.content).decode('utf-8')
         
         return jsonify({
             'status': 'captcha_required',
-            'captcha_image': f"data:image/png;base64,{screenshot_base64}",
+            'captcha_image': captcha_image_base64,
             'session_id': session.sid
         })
     
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Request Error', 'details': str(e)}), 500
 
 @app.route('/submit', methods=['POST'])
@@ -88,25 +51,40 @@ def submit_form():
     data = request.json
     session_id = data.get('session_id')
     
-    if not session_id or 'page' not in session:
+    if not session_id or 'requests_session' not in session:
         return jsonify({'error': 'Invalid session'}), 400
     
-    captcha = data.get('captcha')
-    birth_date = data.get('birth_date')
-    serial_number = data.get('serial_number')
+    form_data = {
+        'CaptchaInputText': data.get('captcha'),
+        'BirthDate': data.get('birth_date'),
+        'UBRN': data.get('serial_number')
+    }
     
     try:
-        # Use the stored session and page to fill the form and submit it
-        page_content = asyncio.get_event_loop().run_until_complete(
-            fill_form_and_submit(captcha, birth_date, serial_number)
-        )
+        # Use the existing session and page to submit the form
+        previous_page_url = 'https://everify.bdris.gov.bd'
+        soup = BeautifulSoup(session['requests_session'].get(previous_page_url, verify=False, timeout=10).text, 'html.parser')
+        form = soup.find('form')
+        submit_url = previous_page_url + form['action']
+
+        form_data['btn'] = 'Search'
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': previous_page_url,
+        }
+        
+        response = session['requests_session'].post(submit_url, data=form_data, headers=headers, verify=False, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        main_div = soup.find('div', {'id': 'mainContent'})  # Replace 'mainContent' with actual div ID
         
         return jsonify({
             'status': 'success',
-            'content': page_content
+            'content': str(main_div)
         })
     
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Request Error', 'details': str(e)}), 500
 
 if __name__ == '__main__':
