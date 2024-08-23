@@ -1,36 +1,27 @@
-# Use an official Python runtime as a parent image
+# Use the official lightweight Python image.
 FROM python:3.11-slim
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
+# Install system dependencies and CA certificates
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
-    python3-dev \
-    curl \
-    wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chromium for pyppeteer
-RUN apt-get update && apt-get install -y \
-    chromium \
-    && rm -rf /var/lib/apt/lists/*
+# Install Python dependencies
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Create a directory for the app
+# Copy project
+COPY . /app
+
+# Set working directory
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app/
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Expose the port that the app will run on
+# Expose port 8080
 EXPOSE 8080
 
-# Run the app
+# Start the application
 CMD ["python", "app.py"]
