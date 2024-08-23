@@ -3,9 +3,16 @@ services:
     name: captcha-tls-app
     env: docker
     plan: free
+    buildCommand: "docker build -t captcha-tls-app ."
+    startCommand: "python app.py"
     autoDeploy: true
     region: us
     timeoutSeconds: 300
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: PYTHONHTTPSVERIFY
-        value: "0"
+        value: "1"
+      - key: FLASK_ENV
+        value: "production"
+      - key: SECRET_KEY
+        value: "your_secret_key_here"
