@@ -31,23 +31,19 @@ def initiate_session():
         soup = BeautifulSoup(response.text, 'html.parser')
         captcha_img_tag = soup.find('img', {'id': 'CaptchaImage'})
         captcha_img_src = captcha_img_tag['src']
-        captcha_image_url = url + captcha_img_src
-
-        captcha_image_response = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
-        captcha_image_response.raise_for_status()
-
-        # Convert image to base64
-        image = Image.open(BytesIO(captcha_image_response.content))
-        buffered = BytesIO()
-        image.save(buffered, format="PNG")  # or "JPEG" based on the actual format
-        captcha_image_base64 = "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode('utf-8')
         
-        return jsonify({
-            'status': 'captcha_required',
-            'captcha_image': captcha_image_base64,
-            'session_id': session.sid
-        })
-    
+        # If captcha source is a base64 data URL
+        if captcha_img_src.startswith('data:'):
+            content_type, encoded_image = captcha_img_src.split(',', 1)
+            return jsonify({
+                'status': 'captcha_required',
+                'captcha_image': captcha_img_src,
+                'session_id': session.sid
+            })
+        else:
+            # If the captcha is not a base64 data URL, handle this case
+            return jsonify({'error': 'Captcha image source is not a data URL'}), 400
+
     except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Request Error', 'details': str(e)}), 500
 
@@ -66,9 +62,11 @@ def submit_form():
     }
     
     try:
-        # Use the existing session and page to submit the form
         previous_page_url = 'https://everify.bdris.gov.bd'
-        soup = BeautifulSoup(session['requests_session'].get(previous_page_url, verify=False, timeout=10).text, 'html.parser')
+        response = session['requests_session'].get(previous_page_url, verify=False, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
         form = soup.find('form')
         submit_url = previous_page_url + form['action']
 
